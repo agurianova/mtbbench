@@ -1,6 +1,12 @@
 import json
 import gc
 import os
+
+# vLLM v1 depends on numba, which currently requires numpy<=2.2
+os.environ.setdefault("VLLM_USE_V1", "0")
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import torch
 from omegaconf import OmegaConf
 
@@ -14,11 +20,11 @@ from neurips25.utils.load_model import get_model
 if __name__ == "__main__":
     args = get_parser()
     conf = OmegaConf.load("neurips25/configs/base.yaml")
-    # Load the patient cases from the JSON file
-    if args.dataset == "hancock":
-        patient_cases = json.loads(open(conf.dataset.path, "r").readlines()[0])
-    elif args.dataset == "msk":
-        patient_cases = json.loads(open(conf.dataset.msk_bench, "r").readlines()[0])
+    # Hancock-only benchmarking
+    if args.dataset and args.dataset != "hancock":
+        raise ValueError("This benchmark configuration supports Hancock data only. Use --dataset hancock")
+    patient_cases = json.loads(open(conf.dataset.path, "r").readlines()[0])
+    cases_path = conf.hancock.cases_path
 
     # Count the number of questions in all the patient cases
     question_count = 0
@@ -29,7 +35,12 @@ if __name__ == "__main__":
     print(question_count)
 
     # Initialize the main LLM and oracle LLM
-    main_llm, model_name = get_model(args.doctor_model)
+    main_llm, model_name = get_model(
+        args.doctor_model,
+        score_choice_probs=not args.skip_choice_prob_scoring,
+    )
+
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Loop through the patient cases and run the agent
     for case_id in list(patient_cases.keys()):
@@ -42,7 +53,11 @@ if __name__ == "__main__":
         print(torch.cuda.memory_allocated() / 1024 ** 3, "GB")
 
         # You can use the following default agent if you do not want to use tools
-        agent = DoctorAgent(main_llm, main_llm, model_name=model_name, output_dir=args.output_dir)
+        agent = DoctorAgent(
+            main_llm, main_llm, model_name=model_name,
+            output_dir=args.output_dir, cases_path=cases_path,
+            inject_population_stats=not args.no_population_stats,
+        )
         # if args.dataset == "hancock":
         #     agent = DoctorAgentWithTools(main_llm, main_llm, model_name=model_name, output_dir=args.output_dir)
         # elif args.dataset == "msk":

@@ -1,4 +1,6 @@
 opencv-python-headless
+Pillow
+numpy<2.3
 timm
 git+https://github.com/huggingface/transformers.git@e94a4807df45ec2967bb7f88c3d008f40fc9d550
 git+https://github.com/Mahmoodlab/CONCH.git

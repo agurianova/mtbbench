@@ -1,4 +1,7 @@
 import os
+
+os.environ.setdefault("VLLM_USE_V1", "0")
+
 import torch
 import base64
 from typing import NamedTuple, Optional
