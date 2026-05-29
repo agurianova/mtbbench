@@ -1,91 +1,72 @@
-# MTBBench: A Multimodal Sequential Clinical Decision-Making Benchmark in Oncology
+# MTBBench extension (Hancock pilot)
 
-**MTBBench** is a benchmark designed to evaluate the reasoning capabilities of multimodal large language models (LLMs) in complex clinical decision-making scenarios. It focuses on two core challenges in oncology: multimodal integration (e.g., pathology, genomics, radiology) and longitudinal reasoning across patient timelines. The benchmark includes agentic tasks requiring interaction with external foundation model-based tools and datasets.
+Extensions on the Hancock track: compare **Llama 3.1 8B** (`unsloth/Llama-3.1-8B-Instruct`) and **Meditron 8B** (`epfl-llm/meditron3-8b`) on text-only questions, measure calibration, and test SEER/TCGA population hints for prognosis.
 
----
+## Code changes (vs upstream)
 
-## 🛠 Getting Started
+- **Models** — `neurips25/utils/load_model.py`: vLLM text eval for Llama and Meditron.
+- **Agent** — `neurips25/models/agent.py`: `[ANSWER]` / `[CONFIDENCE]` tags, log-prob + self-reported confidence, optional cohort context.
+- **Population** — staging + TCGA/SEER lookup (`staging.py`, `survival_lookup.py`, `data/hnc_survival_reference.json`); naive rule: favorable if cohort rate > 50% + 10 pp.
+- **CLI** — `--no_population_stats`, `--skip_choice_prob_scoring`.
+- **Analysis** — `neurips25/analysis/`: question types, text-only filter, ECE/AUROC, prognosis follow/disagree.
 
-To install all required dependencies, simply run:
+Runs use plain `DoctorAgent`.
 
-```bash
-bash setup.sh
-```
+## Where logs live
 
-> **Note**: If you want to evaluate the agent on **IHC data**, you will need to additionally clone and install [TRIDENT](https://github.com/mahmoodlab/TRIDENT/tree/main) from source.
+Under `agent_logs_hancock/`:
 
----
+- **`llama31-8b/`**, **`meditron3-8b/`** — no SEER/TCGA in the prompt (`--no_population_stats`). Used for Experiments 1–2 and as the “without injection” arm in Experiment 3.
+- **`llama31-8b_with-population/`**, **`meditron3-8b_with-population/`** — prognosis questions get staging, cohort rates, and the population rule. Used for Experiment 3.
 
-## ⚙️ Configuration
+Other paper models (Qwen-VL, Gemma, …) keep their original folder names.
 
-Before running the benchmark, configure your paths and credentials in:
+**Text-only subset:** 156 of 390 questions (blood + prognosis; image questions excluded).
 
-```
-neurips25/configs/base.yaml
-```
+## Run benchmarks
 
-The config file specifies paths to datasets, tool credentials, and output directories. Below, we provide guidance for acquiring the necessary external datasets.
-
----
-
-## 📁 Datasets
-
-### HANCOCK (Multimodal Tissue Microarrays)
-
-The **HANCOCK** dataset contains SVS-format tissue micro arrays (TMAs). To prepare it:
-
-1. Follow the original [HANCOCK GitHub repository](https://github.com/ankilab/HANCOCK_MultimodalDataset) to extract tiles and compute cell densities using QuPath.
-2. Reproduce our ABMIL training by extracting tumor centers and cell density measurements for **Blocks 1 and 2**.
-3. Download the dataset files from the [HANCOCK project page](https://hancock.research.fau.eu/download) to replicate the question curation used in the benchmark.
-
----
-
-### MSK-CHORD (Longitudinal Genomic Profiles)
-
-The **MSK-CHORD** dataset is available on [cBioPortal](https://www.cbioportal.org/study/summary?id=msk_chord_2024). To use it:
-
-* Download the ZIP archive from the cBioPortal page.
-* Extract it and update the dataset path in `base.yaml`.
-
----
-
-### DrugBank API
-
-To enable the **DrugBank tool** for longitudinal drug lookups:
-
-1. [Register for a DrugBank account](https://www.drugbank.com).
-2. Apply for a license to access their API.
-3. Download and locally host the dataset following their documentation.
-4. Update your API path and credentials in the config file.
-
----
-
-## 📑 Agent Logs
-
-We provide full logs of agent interactions for all models evaluated in the paper:
-
-* `agent_logs_hancock/`: Multimodal evaluation logs (HANCOCK)
-* `agent_logs_msk/`: Longitudinal evaluation logs (MSK-CHORD)
-
-Each log includes all agent–LLM conversations, intermediate reasoning steps, and generated answers.
-
----
-
-## ▶️ Running the Benchmark
-
-Make sure you have:
-
-* Installed dependencies
-* Configured Hugging Face access tokens (for model download)
-* Set paths in `base.yaml`
-
-To run an evaluation with `Qwen/Qwen2.5-VL-7B-Instruct` on the HANCOCK dataset:
+Configure `neurips25/configs/base.yaml`, then from repo root:
 
 ```bash
+# Experiments 1 & 2 (no cohort stats)
 python -m neurips25.benchmarks.run_agent_benchmark \
-  --doctor_model "Qwen/Qwen2.5-VL-7B-Instruct" \
-  --output_dir "./agent_logs_hancock/" \
-  --dataset "hancock"
+  --doctor_model unsloth/Llama-3.1-8B-Instruct \
+  --output_dir ./agent_logs_hancock/llama31-8b/ \
+  --dataset hancock --no_population_stats
+
+python -m neurips25.benchmarks.run_agent_benchmark \
+  --doctor_model epfl-llm/meditron3-8b \
+  --output_dir ./agent_logs_hancock/meditron3-8b/ \
+  --dataset hancock --no_population_stats
+
+# Experiment 3 (with cohort stats — drop --no_population_stats)
+python -m neurips25.benchmarks.run_agent_benchmark \
+  --doctor_model unsloth/Llama-3.1-8B-Instruct \
+  --output_dir ./agent_logs_hancock/llama31-8b_with-population/ \
+  --dataset hancock
+
+python -m neurips25.benchmarks.run_agent_benchmark \
+  --doctor_model epfl-llm/meditron3-8b \
+  --output_dir ./agent_logs_hancock/meditron3-8b_with-population/ \
+  --dataset hancock
 ```
 
----
+Use `--skip_choice_prob_scoring` if GPU memory is tight.
+
+## Figures
+
+- Notebook: `notebooks/mtbbench_extension_figures.ipynb`
+- Script: `python notebooks/mtbbench_figures.py`
+- Output: `notebooks/figures/` (PNG only)
+
+Generated files: `medical_llm_text_only_overall`, `cal_reliability_logprobs`, `cal_auroc_panel`, `cohort_usage_panel` (accuracy when following vs disagreeing with cohort rule), `cohort_case_example_116` (PIL diagram). Log dir names: `notebooks/log_paths.py`.
+
+## Results on current logs
+
+**No population:** Llama 58.3%, Meditron 64.1% (text-only, n=156).
+
+**With population (text-only):** Llama 66.7%, Meditron 67.9%.
+
+**Prognosis only, with injection:** Llama 63.5%, Meditron 69.2%; naive population-rule baseline 67.3%.
+
+Calibration plots use the no-population logs; cohort plots use `*_with-population` and compare to no-population prognosis runs for the ablation chart.
