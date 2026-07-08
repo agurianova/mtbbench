@@ -1,6 +1,6 @@
-# MTBBench extension (Hancock pilot)
+# Research Proposal
+Summer school research proposal on evolving MTBBench (NeurIPS 2025) Hancock track [🔗 PDF](AIRI_Research_Proposal.pdf)
 
-Extensions on the Hancock track: compare **Llama 3.1 8B** (`unsloth/Llama-3.1-8B-Instruct`) and **Meditron 8B** (`epfl-llm/meditron3-8b`) on text-only questions, measure calibration, and test SEER/TCGA population hints for prognosis.
 
 ## Where logs live
 
